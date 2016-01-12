@@ -1,14 +1,14 @@
 {
-  "name": "cordova-plugin-wkwebview-engine",
-  "version": "1.0.1",
-  "description": "The official Apache Cordova WKWebView Engine Plugin",
+  "name": "ilicgo-cordova-plugin-wkwebview-engine",
+  "version": "1.0.2",
+  "description": "Fork of the official Apache Cordova WKWebView Engine Plugin",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "https://git-wip-us.apache.org/repos/asf/cordova-plugin-wkwebview-engine.git"
+    "url": "https://github.com/ilicgo/cordova-plugin-wkwebview-engine#1.0.2"
   },
   "keywords": [
     "cordova",
