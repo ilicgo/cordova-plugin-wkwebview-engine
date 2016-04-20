@@ -1,7 +1,7 @@
 {
 
   "name": "ilicgo-cordova-plugin-wkwebview-engine",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Fork of the official Apache Cordova WKWebView Engine Plugin",
   "main": "index.js",
   "scripts": {
