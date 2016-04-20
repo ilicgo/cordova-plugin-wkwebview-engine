@@ -17,376 +17,107 @@
  under the License.
  */
 
-#import "CDVWKWebViewEngine.h"
 #import "CDVWKWebViewUIDelegate.h"
-#import <Cordova/NSDictionary+CordovaPreferences.h>
 
-#import <objc/message.h>
+@implementation CDVWKWebViewUIDelegate
 
-#define CDV_BRIDGE_NAME @"cordova"
-#define CDV_WKWEBVIEW_FILE_URL_LOAD_SELECTOR @"loadFileURL:allowingReadAccessToURL:"
-
-@interface CDVWKWebViewEngine (){
-    NSTimer* _crashRecoveryTimer;
-    BOOL _crashRecoveryActive;
-    NSURLRequest* _lastRequest;
-
-
-}
-
-@property (nonatomic, strong, readwrite) UIView* engineWebView;
-@property (nonatomic, strong, readwrite) id <WKUIDelegate> uiDelegate;
-
-@end
-
-// see forwardingTargetForSelector: selector comment for the reason for this pragma
-#pragma clang diagnostic ignored "-Wprotocol"
-
-@implementation CDVWKWebViewEngine
-
-@synthesize engineWebView = _engineWebView;
-
-- (instancetype)initWithFrame:(CGRect)frame
+- (instancetype)initWithTitle:(NSString*)title
 {
     self = [super init];
     if (self) {
-        if (NSClassFromString(@"WKWebView") == nil) {
-            return nil;
-        }
-
-
-
-        self.uiDelegate = [[CDVWKWebViewUIDelegate alloc] initWithTitle:[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"]];
-
-        WKUserContentController* userContentController = [[WKUserContentController alloc] init];
-        [userContentController addScriptMessageHandler:self name:CDV_BRIDGE_NAME];
-
-        WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
-        configuration.userContentController = userContentController;
-
-        WKWebView* wkWebView = [[WKWebView alloc] initWithFrame:frame configuration:configuration];
-
-        wkWebView.UIDelegate = self.uiDelegate;
-        wkWebView.scrollView.scrollEnabled = NO;
-        self.engineWebView = wkWebView;
-
-        _crashRecoveryTimer = [NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(recoverFromCrash) userInfo:nil repeats:YES];
-        NSLog(@"Using WKWebView");
+        self.title = title;
     }
 
     return self;
 }
 
-- (void)recoverFromCrash
+- (void)     webView:(WKWebView*)webView runJavaScriptAlertPanelWithMessage:(NSString*)message
+    initiatedByFrame:(WKFrameInfo*)frame completionHandler:(void (^)(void))completionHandler
 {
-    // When an empty title is returned, WkWebView has crashed
-    NSString* title = ((WKWebView*)self.engineWebView).title;
-    if ((title == nil) || [title isEqualToString:@""]) {
-        if (_crashRecoveryActive) {
-            NSLog(@"WkWebView crash detected, recovering... ");
-            _crashRecoveryActive = false;
-            [_crashRecoveryTimer invalidate];
-            _crashRecoveryTimer = nil;
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:self.title
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
 
-            WKWebView* wkWebViewOld = (WKWebView*)_engineWebView;
-            CGRect frame = wkWebViewOld.frame;
+    UIAlertAction* ok = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction* action)
+        {
+            completionHandler();
+            [alert dismissViewControllerAnimated:YES completion:nil];
+        }];
 
-            [wkWebViewOld removeFromSuperview];
+    [alert addAction:ok];
 
-            CDVViewController* vc = (CDVViewController*)self.viewController;
+    UIViewController* rootController = [UIApplication sharedApplication].delegate.window.rootViewController;
 
-
-            WKUserContentController* userContentController = [[WKUserContentController alloc] init];
-            [userContentController addScriptMessageHandler:self name:CDV_BRIDGE_NAME];
-
-            WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
-            configuration.userContentController = userContentController;
-
-            WKWebView* wkWebView = [[WKWebView alloc] initWithFrame:frame configuration:configuration];
-
-            wkWebView.UIDelegate = self.uiDelegate;
-            wkWebView.scrollView.scrollEnabled = NO;
-            self.engineWebView = wkWebView;
-
-
-
-            [wkWebView loadRequest:_lastRequest];
-
-            [vc.view addSubview:wkWebView];
-            [self pluginInitialize];
-
-
-        }
-    } else {
-
-        // Once the title has been reported back as valid, activate crash recovery
-        _crashRecoveryActive = true;
-    }
+    [rootController presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)pluginInitialize
+- (void)     webView:(WKWebView*)webView runJavaScriptConfirmPanelWithMessage:(NSString*)message
+    initiatedByFrame:(WKFrameInfo*)frame completionHandler:(void (^)(BOOL result))completionHandler
 {
-    // viewController would be available now. we attempt to set all possible delegates to it, by default
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:self.title
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
 
-    WKWebView* wkWebView = (WKWebView*)_engineWebView;
+    UIAlertAction* ok = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction* action)
+        {
+            completionHandler(YES);
+            [alert dismissViewControllerAnimated:YES completion:nil];
+        }];
 
-    if ([self.viewController conformsToProtocol:@protocol(WKUIDelegate)]) {
-        wkWebView.UIDelegate = (id <WKUIDelegate>)self.viewController;
-    }
+    [alert addAction:ok];
 
-    if ([self.viewController conformsToProtocol:@protocol(WKNavigationDelegate)]) {
-        wkWebView.navigationDelegate = (id <WKNavigationDelegate>)self.viewController;
-    } else {
-        wkWebView.navigationDelegate = (id <WKNavigationDelegate>)self;
-    }
+    UIAlertAction* cancel = [UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", @"Cancel")
+                                                     style:UIAlertActionStyleDefault
+                                                   handler:^(UIAlertAction* action)
+        {
+            completionHandler(NO);
+            [alert dismissViewControllerAnimated:YES completion:nil];
+        }];
+    [alert addAction:cancel];
 
-    if ([self.viewController conformsToProtocol:@protocol(WKScriptMessageHandler)]) {
-        [wkWebView.configuration.userContentController addScriptMessageHandler:(id < WKScriptMessageHandler >)self.viewController name:@"cordova"];
-    }
+    UIViewController* rootController = [UIApplication sharedApplication].delegate.window.rootViewController;
 
-    [self updateSettings:self.commandDelegate.settings];
+    [rootController presentViewController:alert animated:YES completion:nil];
 }
 
-- (id)loadRequest:(NSURLRequest*)request
+- (void)      webView:(WKWebView*)webView runJavaScriptTextInputPanelWithPrompt:(NSString*)prompt
+          defaultText:(NSString*)defaultText initiatedByFrame:(WKFrameInfo*)frame
+    completionHandler:(void (^)(NSString* result))completionHandler
 {
-    _lastRequest = request;
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:self.title
+                                                                   message:prompt
+                                                            preferredStyle:UIAlertControllerStyleAlert];
 
-    if ([self canLoadRequest:request]) { // can load, differentiate between file urls and other schemes
-        if (request.URL.fileURL) {
-            SEL wk_sel = NSSelectorFromString(CDV_WKWEBVIEW_FILE_URL_LOAD_SELECTOR);
-            NSURL* readAccessUrl = [request.URL URLByDeletingLastPathComponent];
-            return ((id (*)(id, SEL, id, id))objc_msgSend)(_engineWebView, wk_sel, request.URL, readAccessUrl);
-        } else {
-            return [(WKWebView*)_engineWebView loadRequest:request];
-        }
-    } else { // can't load, print out error
-        NSString* errorHtml = [NSString stringWithFormat:
-                               @"<!doctype html>"
-                               @"<title>Error</title>"
-                               @"<div style='font-size:2em'>"
-                               @"   <p>The WebView engine '%@' is unable to load the request: %@</p>"
-                               @"   <p>Most likely the cause of the error is that the loading of file urls is not supported in iOS %@.</p>"
-                               @"</div>",
-                               NSStringFromClass([self class]),
-                               [request.URL description],
-                               [[UIDevice currentDevice] systemVersion]
-                               ];
-        return [self loadHTMLString:errorHtml baseURL:nil];
-    }
+    UIAlertAction* ok = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction* action)
+        {
+            completionHandler(((UITextField*)alert.textFields[0]).text);
+            [alert dismissViewControllerAnimated:YES completion:nil];
+        }];
+
+    [alert addAction:ok];
+
+    UIAlertAction* cancel = [UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", @"Cancel")
+                                                     style:UIAlertActionStyleDefault
+                                                   handler:^(UIAlertAction* action)
+        {
+            completionHandler(nil);
+            [alert dismissViewControllerAnimated:YES completion:nil];
+        }];
+    [alert addAction:cancel];
+
+    [alert addTextFieldWithConfigurationHandler:^(UITextField* textField) {
+        textField.text = defaultText;
+    }];
+
+    UIViewController* rootController = [UIApplication sharedApplication].delegate.window.rootViewController;
+
+    [rootController presentViewController:alert animated:YES completion:nil];
 }
 
-- (id)loadHTMLString:(NSString*)string baseURL:(NSURL*)baseURL
-{
-    return [(WKWebView*)_engineWebView loadHTMLString:string baseURL:baseURL];
-}
-
-- (NSURL*) URL
-{
-    return [(WKWebView*)_engineWebView URL];
-}
-
-- (BOOL) canLoadRequest:(NSURLRequest*)request
-{
-    // See: https://issues.apache.org/jira/browse/CB-9636
-    SEL wk_sel = NSSelectorFromString(CDV_WKWEBVIEW_FILE_URL_LOAD_SELECTOR);
-
-    // if it's a file URL, check whether WKWebView has the selector (which is in iOS 9 and up only)
-    if (request.URL.fileURL) {
-        return [_engineWebView respondsToSelector:wk_sel];
-    } else {
-        return YES;
-    }
-}
-
-- (void)updateSettings:(NSDictionary*)settings
-{
-
-    WKWebView* wkWebView = (WKWebView*)_engineWebView;
-
-    wkWebView.configuration.preferences.minimumFontSize = [settings cordovaFloatSettingForKey:@"MinimumFontSize" defaultValue:0.0];
-    wkWebView.configuration.allowsInlineMediaPlayback = [settings cordovaBoolSettingForKey:@"AllowInlineMediaPlayback" defaultValue:NO];
-    wkWebView.configuration.mediaPlaybackRequiresUserAction = [settings cordovaBoolSettingForKey:@"MediaPlaybackRequiresUserAction" defaultValue:YES];
-    wkWebView.configuration.suppressesIncrementalRendering = [settings cordovaBoolSettingForKey:@"SuppressesIncrementalRendering" defaultValue:NO];
-    wkWebView.configuration.mediaPlaybackAllowsAirPlay = [settings cordovaBoolSettingForKey:@"MediaPlaybackAllowsAirPlay" defaultValue:YES];
-
-     /*
-     wkWebView.configuration.preferences.javaScriptEnabled = [settings cordovaBoolSettingForKey:@"JavaScriptEnabled" default:YES];
-     wkWebView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = [settings cordovaBoolSettingForKey:@"JavaScriptCanOpenWindowsAutomatically" default:NO];
-     */
-
-    // By default, DisallowOverscroll is false (thus bounce is allowed)
-    BOOL bounceAllowed = !([settings cordovaBoolSettingForKey:@"DisallowOverscroll" defaultValue:NO]);
-
-    // prevent webView from bouncing
-    if (!bounceAllowed) {
-        if ([wkWebView respondsToSelector:@selector(scrollView)]) {
-            ((UIScrollView*)[wkWebView scrollView]).bounces = NO;
-        } else {
-            for (id subview in wkWebView.subviews) {
-                if ([[subview class] isSubclassOfClass:[UIScrollView class]]) {
-                    ((UIScrollView*)subview).bounces = NO;
-                }
-            }
-        }
-    }
-}
-
-- (void)updateWithInfo:(NSDictionary*)info
-{
-    NSDictionary* scriptMessageHandlers = [info objectForKey:kCDVWebViewEngineScriptMessageHandlers];
-    NSDictionary* settings = [info objectForKey:kCDVWebViewEngineWebViewPreferences];
-    id navigationDelegate = [info objectForKey:kCDVWebViewEngineWKNavigationDelegate];
-    id uiDelegate = [info objectForKey:kCDVWebViewEngineWKUIDelegate];
-
-    WKWebView* wkWebView = (WKWebView*)_engineWebView;
-
-    if (scriptMessageHandlers && [scriptMessageHandlers isKindOfClass:[NSDictionary class]]) {
-        NSArray* allKeys = [scriptMessageHandlers allKeys];
-
-        for (NSString* key in allKeys) {
-            id object = [scriptMessageHandlers objectForKey:key];
-            if ([object conformsToProtocol:@protocol(WKScriptMessageHandler)]) {
-                [wkWebView.configuration.userContentController addScriptMessageHandler:object name:key];
-            }
-        }
-    }
-
-    if (navigationDelegate && [navigationDelegate conformsToProtocol:@protocol(WKNavigationDelegate)]) {
-        wkWebView.navigationDelegate = navigationDelegate;
-    }
-
-    if (uiDelegate && [uiDelegate conformsToProtocol:@protocol(WKUIDelegate)]) {
-        wkWebView.UIDelegate = uiDelegate;
-    }
-
-    if (settings && [settings isKindOfClass:[NSDictionary class]]) {
-        [self updateSettings:settings];
-    }
-}
-
-// This forwards the methods that are in the header that are not implemented here.
-// Both WKWebView and UIWebView implement the below:
-//     loadHTMLString:baseURL:
-//     loadRequest:
-- (id)forwardingTargetForSelector:(SEL)aSelector
-{
-    return _engineWebView;
-}
-
-#pragma mark WKScriptMessageHandler implementation
-
-- (void)userContentController:(WKUserContentController*)userContentController didReceiveScriptMessage:(WKScriptMessage*)message
-{
-    if (![message.name isEqualToString:CDV_BRIDGE_NAME]) {
-        return;
-    }
-
-    CDVViewController* vc = (CDVViewController*)self.viewController;
-
-    NSArray* jsonEntry = message.body; // NSString:callbackId, NSString:service, NSString:action, NSArray:args
-    CDVInvokedUrlCommand* command = [CDVInvokedUrlCommand commandFromJson:jsonEntry];
-    CDV_EXEC_LOG(@"Exec(%@): Calling %@.%@", command.callbackId, command.className, command.methodName);
-
-    if (![vc.commandQueue execute:command]) {
-#ifdef DEBUG
-        NSError* error = nil;
-        NSString* commandJson = nil;
-        NSData* jsonData = [NSJSONSerialization dataWithJSONObject:jsonEntry
-                                                           options:0
-                                                             error:&error];
-
-        if (error == nil) {
-            commandJson = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
-        }
-
-            static NSUInteger maxLogLength = 1024;
-            NSString* commandString = ([commandJson length] > maxLogLength) ?
-                [NSString stringWithFormat : @"%@[...]", [commandJson substringToIndex:maxLogLength]] :
-                commandJson;
-
-            NSLog(@"FAILED pluginJSON = %@", commandString);
-#endif
-    }
-}
-
-#pragma mark WKNavigationDelegate implementation
-
-- (void)webView:(WKWebView*)webView didStartProvisionalNavigation:(WKNavigation*)navigation
-{
-    [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPluginResetNotification object:webView]];
-}
-
-- (void)webView:(WKWebView*)webView didFinishNavigation:(WKNavigation*)navigation
-{
-    CDVViewController* vc = (CDVViewController*)self.viewController;
-    [CDVUserAgentUtil releaseLock:vc.userAgentLockToken];
-
-    [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPageDidLoadNotification object:webView]];
-}
-
-- (void)webView:(WKWebView*)theWebView didFailNavigation:(WKNavigation*)navigation withError:(NSError*)error
-{
-    CDVViewController* vc = (CDVViewController*)self.viewController;
-    [CDVUserAgentUtil releaseLock:vc.userAgentLockToken];
-
-    NSString* message = [NSString stringWithFormat:@"Failed to load webpage with error: %@", [error localizedDescription]];
-    NSLog(@"%@", message);
-
-    NSURL* errorUrl = vc.errorURL;
-    if (errorUrl) {
-        errorUrl = [NSURL URLWithString:[NSString stringWithFormat:@"?error=%@", [message stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]] relativeToURL:errorUrl];
-        NSLog(@"%@", [errorUrl absoluteString]);
-        [theWebView loadRequest:[NSURLRequest requestWithURL:errorUrl]];
-    }
-}
-
-- (BOOL)defaultResourcePolicyForURL:(NSURL*)url
-{
-    // all file:// urls are allowed
-    if ([url isFileURL]) {
-        return YES;
-    }
-
-    return NO;
-}
-
-- (void) webView: (WKWebView *) webView decidePolicyForNavigationAction: (WKNavigationAction*) navigationAction decisionHandler: (void (^)(WKNavigationActionPolicy)) decisionHandler
-{
-    NSURL* url = [navigationAction.request URL];
-    CDVViewController* vc = (CDVViewController*)self.viewController;
-
-    /*
-     * Give plugins the chance to handle the url
-     */
-    BOOL anyPluginsResponded = NO;
-    BOOL shouldAllowRequest = NO;
-
-    for (NSString* pluginName in vc.pluginObjects) {
-        CDVPlugin* plugin = [vc.pluginObjects objectForKey:pluginName];
-        SEL selector = NSSelectorFromString(@"shouldOverrideLoadWithRequest:navigationType:");
-        if ([plugin respondsToSelector:selector]) {
-            anyPluginsResponded = YES;
-            shouldAllowRequest = (((BOOL (*)(id, SEL, id, int))objc_msgSend)(plugin, selector, navigationAction.request, navigationAction.navigationType));
-            if (!shouldAllowRequest) {
-                break;
-            }
-        }
-    }
-
-    if (anyPluginsResponded) {
-        return decisionHandler(shouldAllowRequest);
-    }
-
-    /*
-     * Handle all other types of urls (tel:, sms:), and requests to load a url in the main webview.
-     */
-    BOOL shouldAllowNavigation = [self defaultResourcePolicyForURL:url];
-    if (shouldAllowNavigation) {
-        return decisionHandler(YES);
-    } else {
-        [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPluginHandleOpenURLNotification object:url]];
-    }
-
-    return decisionHandler(NO);
-}
 @end
