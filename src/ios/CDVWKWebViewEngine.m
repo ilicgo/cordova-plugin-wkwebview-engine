@@ -357,6 +357,11 @@
     return NO;
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView
+{
+     [webView reload];
+}
+
 - (void) webView: (WKWebView *) webView decidePolicyForNavigationAction: (WKNavigationAction*) navigationAction decisionHandler: (void (^)(WKNavigationActionPolicy)) decisionHandler
 {
     NSURL* url = [navigationAction.request URL];
